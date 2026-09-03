@@ -3,6 +3,7 @@
 import React from 'react';
 import { HealthSpanStore } from '@/lib/types';
 import { calculateBMI, classifyBMI, classifyBP } from '@/lib/referenceRanges';
+import { useNow } from '@/hooks/useNow';
 import { Scale, HeartPulse, Moon, Dumbbell, Pill, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface QuickMetricsSummaryProps {
@@ -12,6 +13,7 @@ interface QuickMetricsSummaryProps {
 
 export default function QuickMetricsSummary({ store, onNavigateTab }: QuickMetricsSummaryProps) {
   const { timeSeries, profile } = store;
+  const now = useNow();
 
   const sortedBody = [...timeSeries.bodyMetrics].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   const latestBody = sortedBody[sortedBody.length - 1];
@@ -37,7 +39,7 @@ export default function QuickMetricsSummary({ store, onNavigateTab }: QuickMetri
   const activeMeds = timeSeries.lifestyle.medications.filter(m => m.active);
   const dueMeds = activeMeds.filter(m => {
     if (!m.lastTakenTimestamp) return true;
-    const diffHours = (Date.now() - new Date(m.lastTakenTimestamp).getTime()) / (1000 * 60 * 60);
+    const diffHours = (now - new Date(m.lastTakenTimestamp).getTime()) / (1000 * 60 * 60);
     return diffHours > 12;
   });
 

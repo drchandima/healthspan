@@ -6,13 +6,15 @@ import { Trash2, AlertOctagon, X } from 'lucide-react';
 interface DeleteAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirmDelete: () => void;
+  onConfirmDelete: () => Promise<boolean>;
+  error?: string | null;
 }
 
 export default function DeleteAccountModal({
   isOpen,
   onClose,
-  onConfirmDelete
+  onConfirmDelete,
+  error
 }: DeleteAccountModalProps) {
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -21,14 +23,14 @@ export default function DeleteAccountModal({
 
   const isGatePassed = confirmText === 'DELETE';
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!isGatePassed) return;
     setIsDeleting(true);
-    setTimeout(() => {
-      onConfirmDelete();
-      setIsDeleting(false);
+    const ok = await onConfirmDelete();
+    setIsDeleting(false);
+    if (ok) {
       onClose();
-    }, 600);
+    }
   };
 
   return (
@@ -70,6 +72,19 @@ export default function DeleteAccountModal({
           }}>
             <strong>WARNING:</strong> This action will permanently purge all longitudinal time-series records, lab diagnostic reports, prescription regimens, lifestyle logs, and the immutable audit trail for this patient account from the database.
           </div>
+
+          {error && (
+            <div style={{
+              background: 'var(--critical-bg)',
+              border: '1px solid var(--critical-border)',
+              borderRadius: 'var(--radius-md)',
+              padding: '10px 14px',
+              color: 'var(--critical)',
+              fontSize: '0.82rem'
+            }}>
+              {error}
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-main)' }}>

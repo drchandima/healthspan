@@ -5,46 +5,80 @@ import { calculateBMI, classifyBMI, classifyBP } from './referenceRanges';
 const STORAGE_KEY = 'healthspan_store_v1';
 const CURRENT_USER_KEY = 'healthspan_current_user';
 
-export function getLocalStore(): HealthSpanStore {
-  if (typeof window === 'undefined') {
-    return SEED_DEMO_STORE;
-  }
+// ---------------------------------------------------------------------------
+// Server-backed persistence.
+//
+// The database (PostgreSQL) is the source of truth. These functions call the
+// authenticated API routes with the session cookie. localStorage is retained
+// only as an offline/seed cache so the UI can render before a load completes.
+// ---------------------------------------------------------------------------
+
+export async function loadStoreFromServer(): Promise<HealthSpanStore | null> {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_DEMO_STORE));
-      return SEED_DEMO_STORE;
+    const res = await fetch('/api/health-data', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data?.store) {
+      // Keep a local cache copy.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.store));
+      return data.store as HealthSpanStore;
     }
-    return JSON.parse(stored);
+    return null;
   } catch (err) {
-    console.error('Error reading localStorage:', err);
-    return SEED_DEMO_STORE;
+    console.error('Error loading store from server:', err);
+    return getCachedLocalStore();
   }
 }
 
-export function saveLocalStore(store: HealthSpanStore): void {
-  if (typeof window === 'undefined') return;
+export async function persistStore(store: HealthSpanStore): Promise<boolean> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-    // Optional: Notify background API if running on full server
-    fetch('/api/health-data', {
+    const res = await fetch('/api/health-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(store)
-    }).catch(() => {
-      // Offline / client-first fallback is seamless
+      body: JSON.stringify({ store }),
     });
+    if (!res.ok) return false;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    return true;
   } catch (err) {
-    console.error('Error saving store to localStorage:', err);
+    console.error('Error persisting store to server:', err);
+    // Offline fallback: keep an unsent copy in the local cache.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    return false;
   }
 }
 
-export function purgeAndResetStore(): void {
-  if (typeof window === 'undefined') return;
+export async function purgeAndResetStore(): Promise<void> {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(CURRENT_USER_KEY);
-  // Also call delete on backend API
-  fetch('/api/health-data?userId=usr_admin_01', { method: 'DELETE' }).catch(() => {});
+  try {
+    await fetch('/api/health-data', { method: 'DELETE' });
+  } catch (err) {
+    console.error('Error purging server store:', err);
+  }
+}
+
+function getCachedLocalStore(): HealthSpanStore | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? (JSON.parse(stored) as HealthSpanStore) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Legacy sync accessor for the seeded store (used before login / SSR). */
+export function getLocalStore(): HealthSpanStore {
+  return getCachedLocalStore() ?? SEED_DEMO_STORE;
+}
+
+/** Legacy sync saver. Fire-and-forget persist to the server. */
+export function saveLocalStore(store: HealthSpanStore): void {
+  void persistStore(store);
 }
 
 // ------------------- AUDIT LOG HELPER -------------------
@@ -54,8 +88,8 @@ export function createAuditEntry(
   recordId: string,
   summary: string,
   reason?: string,
-  previousValue?: any,
-  newValue?: any
+  previousValue?: unknown,
+  newValue?: unknown
 ): AuditTrailRecord {
   return {
     id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,

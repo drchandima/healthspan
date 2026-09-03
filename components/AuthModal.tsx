@@ -1,71 +1,47 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Lock, Mail, UserCheck, KeyRound, Sparkles, ShieldCheck, X } from 'lucide-react';
-import { HealthSpanStore } from '@/lib/types';
-import { SEED_DEMO_STORE } from '@/lib/seedData';
-import { saveLocalStore } from '@/lib/storage';
+import { Lock, Mail, UserCheck, ShieldCheck, X } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: (store: HealthSpanStore) => void;
+  onLoginSuccess: () => void;
 }
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [email, setEmail] = useState('admin@healthspan.com');
-  const [password, setPassword] = useState('admin123');
-  const [fullName, setFullName] = useState('Alexander Wright, M.D.');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
-    setTimeout(() => {
-      // Validate credentials against test requirements
-      if (email.toLowerCase() === 'admin@healthspan.com' && password === 'admin123') {
-        saveLocalStore(SEED_DEMO_STORE);
-        onLoginSuccess(SEED_DEMO_STORE);
-        onClose();
-      } else if (mode === 'signup') {
-        // Create new user initialized with baseline
-        const newStore: HealthSpanStore = {
-          ...SEED_DEMO_STORE,
-          userId: `usr_${Date.now()}`,
-          account: {
-            email,
-            passwordHash: password,
-            twoFactorEnabled: false,
-            createdAt: new Date().toISOString(),
-            lastLoginAt: new Date().toISOString()
-          },
-          profile: {
-            ...SEED_DEMO_STORE.profile,
-            fullName: fullName || 'New Patient'
-          }
-        };
-        saveLocalStore(newStore);
-        onLoginSuccess(newStore);
-        onClose();
-      } else {
-        setError('Invalid credentials. Use demo account: admin@healthspan.com / admin123');
+    try {
+      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, fullName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || 'Authentication failed.');
+        setLoading(false);
+        return;
       }
+      onLoginSuccess();
+      onClose();
+    } catch (err) {
+      setError('Network error. Please try again.');
       setLoading(false);
-    }, 400);
-  };
-
-  const handleQuickDemoLogin = () => {
-    setEmail('admin@healthspan.com');
-    setPassword('admin123');
-    saveLocalStore(SEED_DEMO_STORE);
-    onLoginSuccess(SEED_DEMO_STORE);
-    onClose();
+    }
   };
 
   return (
@@ -87,7 +63,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
             </div>
             <div>
               <h3 style={{ fontSize: '1.15rem' }}>{mode === 'login' ? 'HealthSpan Sign In' : 'Create Patient Account'}</h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Tenant: enterprise-01 (Encrypted)</p>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Tenant: enterprise-01 (Secure sessions)</p>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -97,36 +73,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Quick Demo Pill Banner */}
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 182, 212, 0.08))',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              borderRadius: 'var(--radius-md)',
-              padding: '12px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px'
-            }}>
-              <div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--emerald)' }}>
-                  Demo Credentials Pre-configured
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  admin@healthspan.com &bull; admin123
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleQuickDemoLogin}
-                className="btn btn-primary btn-sm"
-                style={{ fontSize: '0.75rem', padding: '6px 12px' }}
-              >
-                <Sparkles size={13} />
-                Quick Login
-              </button>
-            </div>
-
             {error && (
               <div style={{
                 background: 'var(--critical-bg)',
@@ -143,14 +89,18 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
             {mode === 'signup' && (
               <div className="form-group">
                 <label className="form-label">Full Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Dr. Alexander Wright"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  required
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Alex Morgan"
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    style={{ paddingLeft: '38px' }}
+                    required
+                  />
+                  <UserCheck size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+                </div>
               </div>
             )}
 
@@ -160,7 +110,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
                 <input
                   type="email"
                   className="form-input"
-                  placeholder="admin@healthspan.com"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required

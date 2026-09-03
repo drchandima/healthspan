@@ -8,7 +8,7 @@ import LabResultsTable from './LabResultsTable';
 import LabTimeSeriesChart from './LabTimeSeriesChart';
 import ManualLabEntryModal from './ManualLabEntryModal';
 import OcrUploadModal from './OcrUploadModal';
-import { FlaskConical, UploadCloud, PlusCircle, Sparkles, ShieldCheck, Activity, Droplets, HeartPulse, Stethoscope, TestTube2 } from 'lucide-react';
+import { FlaskConical, UploadCloud, PlusCircle, Sparkles, ShieldCheck, Activity, Droplets, HeartPulse, Stethoscope, TestTube2, LucideIcon } from 'lucide-react';
 
 interface LabResultsTabProps {
   store: HealthSpanStore;
@@ -25,7 +25,7 @@ export default function LabResultsTab({ store, onUpdateStore }: LabResultsTabPro
     title: string;
     biomarker: string;
     panel: LabPanelType;
-    icon: any;
+    icon: LucideIcon;
     color: string;
     options: string[];
   }>>([

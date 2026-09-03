@@ -252,7 +252,7 @@ export default function DietTracker({
                     <select
                       className="form-select"
                       value={mealType}
-                      onChange={e => setMealType(e.target.value as any)}
+                      onChange={e => setMealType(e.target.value as DietRecord['mealType'])}
                     >
                       <option value="Breakfast">Breakfast</option>
                       <option value="Lunch">Lunch</option>
@@ -375,7 +375,7 @@ export default function DietTracker({
                     <select
                       className="form-select"
                       value={editingRecord.mealType}
-                      onChange={e => setEditingRecord({ ...editingRecord, mealType: e.target.value as any })}
+                      onChange={e => setEditingRecord({ ...editingRecord, mealType: e.target.value as DietRecord['mealType'] })}
                     >
                       <option value="Breakfast">Breakfast</option>
                       <option value="Lunch">Lunch</option>

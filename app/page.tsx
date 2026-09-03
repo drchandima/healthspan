@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { HealthSpanStore, HealthScoreBreakdown, ClinicalInsight, BodyMetricRecord } from '@/lib/types';
 import { SEED_DEMO_STORE } from '@/lib/seedData';
-import { getLocalStore, saveLocalStore, addBodyMetric } from '@/lib/storage';
+import { loadStoreFromServer, persistStore, addBodyMetric } from '@/lib/storage';
 import { calculateHealthScore } from '@/lib/healthScoreCalculator';
 import { generatePredictiveInsights } from '@/lib/riskPredictionEngine';
 
@@ -21,29 +21,40 @@ import NotificationsTab from '@/components/notifications/NotificationsTab';
 import SettingsTab from '@/components/settings/SettingsTab';
 
 export default function HealthSpanApp() {
-  const [store, setStore] = useState<HealthSpanStore>(SEED_DEMO_STORE);
+  const [store, setStore] = useState<HealthSpanStore | null>(null);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
-  // Load from storage on mount
+  // Load from the authenticated server store on mount.
   useEffect(() => {
-    setIsMounted(true);
-    const loadedStore = getLocalStore();
-    setStore(loadedStore);
+    let mounted = true;
+    loadStoreFromServer().then((loaded) => {
+      if (!mounted) return;
+      setStore(loaded || SEED_DEMO_STORE);
+      setIsMounted(true);
+      if (!loaded) {
+        // Not logged in yet — prompt for authentication.
+        setIsAuthOpen(true);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Recalculate Health Score & Predictive Clinical Insights
-  const scoreData: HealthScoreBreakdown = calculateHealthScore(store);
-  const insights: ClinicalInsight[] = generatePredictiveInsights(store);
+  // Recalculate Health Score & Predictive Clinical Insights (only when store is loaded)
+  const scoreData: HealthScoreBreakdown | null = store ? calculateHealthScore(store) : null;
+  const insights: ClinicalInsight[] = store ? generatePredictiveInsights(store) : [];
 
   const handleUpdateStore = (newStore: HealthSpanStore) => {
     setStore(newStore);
-    saveLocalStore(newStore);
+    void persistStore(newStore);
   };
 
   const handleMarkNotificationRead = (notifId: string) => {
+    if (!store) return;
     const updated: HealthSpanStore = {
       ...store,
       notifications: store.notifications.map(n => n.id === notifId ? { ...n, read: true } : n)
@@ -52,6 +63,7 @@ export default function HealthSpanApp() {
   };
 
   const handleQuickLogSave = (record: Omit<BodyMetricRecord, 'id' | 'bmi' | 'status'>, reason?: string) => {
+    if (!store) return;
     const updated = addBodyMetric(store, record, reason);
     handleUpdateStore(updated);
   };
@@ -59,13 +71,26 @@ export default function HealthSpanApp() {
   const handleAccountPurged = () => {
     setStore(SEED_DEMO_STORE);
     setActiveTab('dashboard');
-  };
-
-  const handleLogout = () => {
     setIsAuthOpen(true);
   };
 
-  if (!isMounted) {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+    setStore(SEED_DEMO_STORE);
+    setIsAuthOpen(true);
+  };
+
+  const handleLoginSuccess = async () => {
+    const loaded = await loadStoreFromServer();
+    setStore(loaded || SEED_DEMO_STORE);
+    setActiveTab('dashboard');
+  };
+
+  if (!isMounted || !store) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -76,6 +101,22 @@ export default function HealthSpanApp() {
         color: 'var(--text-muted)'
       }}>
         Initializing HealthSpan Platform...
+      </div>
+    );
+  }
+
+  // Guard against rendering tabs before the store is available.
+  if (!scoreData) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'var(--bg-main)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--text-muted)'
+      }}>
+        Loading health data...
       </div>
     );
   }
@@ -163,14 +204,11 @@ export default function HealthSpanApp() {
         initialWeightKg={store.profile.baselineBiometrics.initialWeightKg}
       />
 
-      {/* Auth / Account Switcher Modal */}
+      {/* Auth / Login Modal */}
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
-        onLoginSuccess={newStore => {
-          setStore(newStore);
-          setActiveTab('dashboard');
-        }}
+        onLoginSuccess={handleLoginSuccess}
       />
     </div>
   );

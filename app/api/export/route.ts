@@ -1,23 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { HealthSpanStore } from '@/lib/types';
+import { requireSession } from '@/lib/services/authService';
+import { healthStoreRepository } from '@/lib/repositories/healthStoreRepository';
 import { generateExportData } from '@/lib/storage';
-import { SEED_DEMO_STORE } from '@/lib/seedData';
+import { toHttpError } from '@/lib/http';
 
 export async function POST(request: NextRequest) {
   try {
-    const { format, store }: { format: 'json' | 'csv'; store?: HealthSpanStore } = await request.json();
-    const activeStore = store || SEED_DEMO_STORE;
-    const { content, filename, mimeType } = generateExportData(activeStore, format || 'json');
+    const session = await requireSession();
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const format: 'json' | 'csv' = body?.format === 'csv' ? 'csv' : 'json';
+
+    const store = await healthStoreRepository.load(session.userId, session.tenantId);
+    if (!store) {
+      return NextResponse.json(
+        { success: false, error: 'No data found for account' },
+        { status: 404 }
+      );
+    }
+
+    const { content, filename, mimeType } = generateExportData(store, format);
 
     return new NextResponse(content, {
       status: 200,
       headers: {
         'Content-Type': mimeType,
-        'Content-Disposition': `attachment; filename="${filename}"`
-      }
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
     });
-  } catch (error) {
-    console.error('Export error:', error);
-    return NextResponse.json({ success: false, error: 'Export failed' }, { status: 500 });
+  } catch (err) {
+    const e = toHttpError(err);
+    return NextResponse.json({ success: false, error: e.message }, { status: e.status });
   }
 }

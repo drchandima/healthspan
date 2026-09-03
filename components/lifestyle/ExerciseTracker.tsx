@@ -212,7 +212,7 @@ export default function ExerciseTracker({ exerciseRecords, onAddExercise, onUpda
                   <select
                     className="form-select"
                     value={activityType}
-                    onChange={e => setActivityType(e.target.value as any)}
+                    onChange={e => setActivityType(e.target.value as ExerciseRecord['activityType'])}
                   >
                     <option value="Cardio">Cardio / Running</option>
                     <option value="Strength">Strength / Weight Training</option>
@@ -241,7 +241,7 @@ export default function ExerciseTracker({ exerciseRecords, onAddExercise, onUpda
                     <select
                       className="form-select"
                       value={intensity}
-                      onChange={e => setIntensity(e.target.value as any)}
+                      onChange={e => setIntensity(e.target.value as 'Low' | 'Moderate' | 'High')}
                     >
                       <option value="Low">Low (Zone 1-2)</option>
                       <option value="Moderate">Moderate (Zone 3)</option>
@@ -295,7 +295,7 @@ export default function ExerciseTracker({ exerciseRecords, onAddExercise, onUpda
                   <select
                     className="form-select"
                     value={editingRecord.activityType}
-                    onChange={e => setEditingRecord({ ...editingRecord, activityType: e.target.value as any })}
+                    onChange={e => setEditingRecord({ ...editingRecord, activityType: e.target.value as ExerciseRecord['activityType'] })}
                   >
                     <option value="Cardio">Cardio / Running</option>
                     <option value="Strength">Strength / Weight Training</option>
@@ -324,7 +324,7 @@ export default function ExerciseTracker({ exerciseRecords, onAddExercise, onUpda
                     <select
                       className="form-select"
                       value={editingRecord.intensity}
-                      onChange={e => setEditingRecord({ ...editingRecord, intensity: e.target.value as any })}
+                      onChange={e => setEditingRecord({ ...editingRecord, intensity: e.target.value as 'Low' | 'Moderate' | 'High' })}
                     >
                       <option value="Low">Low (Zone 1-2)</option>
                       <option value="Moderate">Moderate (Zone 3)</option>

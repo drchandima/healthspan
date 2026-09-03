@@ -91,7 +91,7 @@ export default function NotificationsTab({
               ].map(opt => (
                 <label
                   key={opt.id}
-                  onClick={() => handleSavePreferences(opt.id as any, inAppToggle, pushToggle)}
+                  onClick={() => handleSavePreferences(opt.id as 'weekly' | 'monthly' | 'off', inAppToggle, pushToggle)}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',

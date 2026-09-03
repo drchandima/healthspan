@@ -1,68 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { SEED_DEMO_STORE } from '@/lib/seedData';
+import { requireSession } from '@/lib/services/authService';
+import { healthStoreRepository } from '@/lib/repositories/healthStoreRepository';
+import { deleteUserCascade } from '@/lib/repositories/userRepository';
 import { HealthSpanStore } from '@/lib/types';
+import { toHttpError } from '@/lib/http';
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'users');
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function getUserFilePath(userId: string): string {
-  ensureDataDir();
-  return path.join(DATA_DIR, `${userId.replace(/[^a-zA-Z0-9_-]/g, '')}.json`);
-}
-
-export async function GET(request: NextRequest) {
+/**
+ * GET  /api/health-data  — load the authenticated user's aggregate from PG.
+ * POST /api/health-data  — persist the authenticated user's aggregate to PG.
+ * DELETE /api/health-data — permanently delete the user's account and data.
+ */
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId') || 'usr_admin_01';
-    const filePath = getUserFilePath(userId);
-
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, 'utf-8');
-      return NextResponse.json(JSON.parse(data));
+    const session = await requireSession();
+    const store = await healthStoreRepository.load(session.userId, session.tenantId);
+    if (!store) {
+      return NextResponse.json(
+        { success: false, error: 'No data found for account' },
+        { status: 404 }
+      );
     }
-
-    // Default to seed data
-    fs.writeFileSync(filePath, JSON.stringify(SEED_DEMO_STORE, null, 2), 'utf-8');
-    return NextResponse.json(SEED_DEMO_STORE);
-  } catch (error) {
-    console.error('API Error in GET /api/health-data:', error);
-    return NextResponse.json(SEED_DEMO_STORE);
+    return NextResponse.json({ success: true, store });
+  } catch (err) {
+    const e = toHttpError(err);
+    return NextResponse.json({ success: false, error: e.message }, { status: e.status });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const store: HealthSpanStore = await request.json();
-    const userId = store.userId || 'usr_admin_01';
-    const filePath = getUserFilePath(userId);
+    const session = await requireSession();
+    const body = (await request.json()) as { store?: HealthSpanStore } | HealthSpanStore;
+    const store = body && typeof body === 'object' ? (body as { store?: HealthSpanStore }).store ?? (body as HealthSpanStore) : undefined;
+    if (!store || typeof store !== 'object') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid store payload' },
+        { status: 400 }
+      );
+    }
 
-    fs.writeFileSync(filePath, JSON.stringify(store, null, 2), 'utf-8');
-    return NextResponse.json({ success: true, message: 'Saved successfully' });
-  } catch (error) {
-    console.error('API Error in POST /api/health-data:', error);
-    return NextResponse.json({ success: false, error: 'Failed to save health data' }, { status: 500 });
+    // Enforce ownership: never trust userId/tenantId from the client body.
+    store.userId = session.userId;
+    store.tenantId = session.tenantId;
+
+    await healthStoreRepository.save(store);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const e = toHttpError(err);
+    return NextResponse.json({ success: false, error: e.message }, { status: e.status });
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE() {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId') || 'usr_admin_01';
-    const filePath = getUserFilePath(userId);
-
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-    return NextResponse.json({ success: true, message: 'Account and health records deleted permanently' });
-  } catch (error) {
-    console.error('API Error in DELETE /api/health-data:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete' }, { status: 500 });
+    const session = await requireSession();
+    await deleteUserCascade(session.userId, session.tenantId);
+    return NextResponse.json({
+      success: true,
+      message: 'Account and health records deleted permanently',
+    });
+  } catch (err) {
+    const e = toHttpError(err);
+    return NextResponse.json({ success: false, error: e.message }, { status: e.status });
   }
 }

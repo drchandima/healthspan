@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { HealthSpanStore, UserProfile } from '@/lib/types';
-import { saveLocalStore, generateExportData, purgeAndResetStore } from '@/lib/storage';
 import DeleteAccountModal from './DeleteAccountModal';
 import { 
   User, 
@@ -38,32 +37,45 @@ export default function SettingsTab({
   const [show2FAPrompt, setShow2FAPrompt] = useState(false);
 
   const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordSuccessMsg, setPasswordSuccessMsg] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
-  // Save Profile
-  const handleSaveProfile = (e: React.FormEvent) => {
+  // Save Profile (persist to server)
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updated: HealthSpanStore = {
-      ...store,
-      profile: { ...profile }
-    };
-    onUpdateStore(updated);
-    saveLocalStore(updated);
-    setProfileSuccessMsg('Profile information updated successfully.');
-    setTimeout(() => setProfileSuccessMsg(null), 3000);
+    setProfileError(null);
+    try {
+      const res = await fetch('/api/auth/account', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setProfileError(data?.error || 'Failed to save profile.');
+        return;
+      }
+      const updated: HealthSpanStore = {
+        ...store,
+        profile: { ...profile },
+      };
+      onUpdateStore(updated);
+      setProfileSuccessMsg('Profile information updated successfully.');
+      setTimeout(() => setProfileSuccessMsg(null), 3000);
+    } catch (err) {
+      setProfileError('Network error while saving profile.');
+    }
   };
 
-  // Change Password
-  const handleChangePassword = (e: React.FormEvent) => {
+  // Change Password (via authenticated API)
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
 
-    if (currentPassword !== store.account.passwordHash && currentPassword !== 'admin123') {
-      setPasswordError('Current password does not match.');
-      return;
-    }
     if (newPassword.length < 6) {
       setPasswordError('New password must be at least 6 characters.');
       return;
@@ -73,24 +85,29 @@ export default function SettingsTab({
       return;
     }
 
-    const updated: HealthSpanStore = {
-      ...store,
-      account: {
-        ...store.account,
-        passwordHash: newPassword
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPasswordError(data?.error || 'Password change failed.');
+        return;
       }
-    };
-    onUpdateStore(updated);
-    saveLocalStore(updated);
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setPasswordSuccessMsg('Password changed successfully.');
-    setTimeout(() => setPasswordSuccessMsg(null), 3000);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordSuccessMsg('Password changed successfully.');
+      setTimeout(() => setPasswordSuccessMsg(null), 3000);
+    } catch (err) {
+      setPasswordError('Network error while changing password.');
+    }
   };
 
-  // Toggle 2FA
-  const handleToggle2FA = () => {
+  // Toggle 2FA (persist to server)
+  const handleToggle2FA = async () => {
     const nextState = !twoFactorEnabled;
     setTwoFactorEnabled(nextState);
     if (nextState) {
@@ -98,35 +115,79 @@ export default function SettingsTab({
     } else {
       setShow2FAPrompt(false);
     }
-    const updated: HealthSpanStore = {
-      ...store,
-      account: {
-        ...store.account,
-        twoFactorEnabled: nextState
+    try {
+      const res = await fetch('/api/auth/account', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ twoFactorEnabled: nextState }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const updated: HealthSpanStore = {
+          ...store,
+          account: {
+            ...store.account,
+            twoFactorEnabled: nextState,
+          },
+        };
+        onUpdateStore(updated);
       }
-    };
-    onUpdateStore(updated);
-    saveLocalStore(updated);
+    } catch (err) {
+      // rollback UI state on failure
+      setTwoFactorEnabled(!nextState);
+      setShow2FAPrompt(nextState ? false : true);
+    }
   };
 
-  // Export Data Handler (Download file directly to client)
-  const handleExport = (format: 'json' | 'csv') => {
-    const { content, filename, mimeType } = generateExportData(store, format);
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // Export Data Handler (server loads owned data from DB and returns file)
+  const handleExport = async (format: 'json' | 'csv') => {
+    setExportError(null);
+    try {
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setExportError(data?.error || 'Export failed.');
+        return;
+      }
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : `HealthSpan_Export_${format}.${format}`;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError('Network error while exporting.');
+    }
   };
 
-  // Handle Account Deletion
-  const handleConfirmAccountDelete = () => {
-    purgeAndResetStore();
-    onAccountPurged();
+  // Handle Account Deletion (permanently remove from DB)
+  const handleConfirmAccountDelete = async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/health-data', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setDeleteError(data?.error || 'Account deletion failed.');
+        return false;
+      }
+      // clear local cache
+      localStorage.removeItem('healthspan_store_v1');
+      localStorage.removeItem('healthspan_current_user');
+      onAccountPurged();
+      return true;
+    } catch (err) {
+      setDeleteError('Network error during account deletion.');
+      return false;
+    }
   };
 
   return (
@@ -180,6 +241,19 @@ export default function SettingsTab({
               </div>
             )}
 
+            {profileError && (
+              <div style={{
+                background: 'var(--critical-bg)',
+                border: '1px solid var(--critical-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                color: 'var(--critical)',
+                fontSize: '0.82rem'
+              }}>
+                {profileError}
+              </div>
+            )}
+
             <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Full Name</label>
@@ -209,7 +283,7 @@ export default function SettingsTab({
                   <select
                     className="form-select"
                     value={profile.gender}
-                    onChange={e => setProfile({ ...profile, gender: e.target.value as any })}
+                    onChange={e => setProfile({ ...profile, gender: e.target.value as 'male' | 'female' | 'other' })}
                   >
                     <option value="male">Male</option>
                     <option value="female">Female</option>
@@ -444,6 +518,19 @@ export default function SettingsTab({
                 <span>Export as CSV</span>
               </button>
             </div>
+
+            {exportError && (
+              <div style={{
+                background: 'var(--critical-bg)',
+                border: '1px solid var(--critical-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                color: 'var(--critical)',
+                fontSize: '0.82rem'
+              }}>
+                {exportError}
+              </div>
+            )}
           </div>
 
           {/* Multi-Tenant & Encryption Info */}
@@ -535,6 +622,7 @@ export default function SettingsTab({
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirmDelete={handleConfirmAccountDelete}
+        error={deleteError}
       />
     </div>
   );

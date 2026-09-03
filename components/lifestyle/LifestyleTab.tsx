@@ -111,7 +111,7 @@ export default function LifestyleTab({ store, onUpdateStore }: LifestyleTabProps
           return (
             <button
               key={t.id}
-              onClick={() => setSubTab(t.id as any)}
+              onClick={() => setSubTab(t.id as 'sleep' | 'exercise' | 'diet' | 'medications')}
               className={`tab-btn ${isActive ? 'active' : ''}`}
             >
               <Icon size={16} />

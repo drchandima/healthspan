@@ -118,7 +118,7 @@ export default function AuditTrailModal({ isOpen, onClose, auditTrail }: AuditTr
                   )}
 
                   {/* Previous vs New Diff Preview */}
-                  {(entry.previousValue || entry.newValue) && (
+                  {Boolean(entry.previousValue || entry.newValue) && (
                     <div style={{
                       marginTop: '4px',
                       padding: '6px 10px',
@@ -132,11 +132,11 @@ export default function AuditTrailModal({ isOpen, onClose, auditTrail }: AuditTr
                       gap: '8px',
                       overflowX: 'auto'
                     }}>
-                      {entry.previousValue && (
+                      {Boolean(entry.previousValue) && (
                         <span>PREV: {JSON.stringify(entry.previousValue).slice(0, 70)}...</span>
                       )}
-                      {entry.previousValue && entry.newValue && <ArrowRight size={12} />}
-                      {entry.newValue && (
+                      {Boolean(entry.previousValue && entry.newValue) && <ArrowRight size={12} />}
+                      {Boolean(entry.newValue) && (
                         <span style={{ color: 'var(--emerald)' }}>NEW: {JSON.stringify(entry.newValue).slice(0, 70)}...</span>
                       )}
                     </div>

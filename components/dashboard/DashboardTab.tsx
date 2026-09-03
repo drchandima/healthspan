@@ -6,6 +6,7 @@ import HealthScoreGauge from './HealthScoreGauge';
 import HealthScoreTrend from './HealthScoreTrend';
 import QuickMetricsSummary from './QuickMetricsSummary';
 import TopInsightsList from './TopInsightsList';
+import { useNow } from '@/hooks/useNow';
 import { User, Calendar, PlusCircle, ShieldCheck, Dna, FileText, Activity } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -24,12 +25,13 @@ export default function DashboardTab({
   onOpenQuickLog
 }: DashboardTabProps) {
   const { profile, timeSeries } = store;
+  const now = useNow();
 
   // Calculate patient age from DOB
   const calculateAge = (dobString: string) => {
     if (!dobString) return 44;
     const birthDate = new Date(dobString);
-    const diffMs = Date.now() - birthDate.getTime();
+    const diffMs = now - birthDate.getTime();
     const ageDate = new Date(diffMs);
     return Math.abs(ageDate.getUTCFullYear() - 1970);
   };

@@ -107,6 +107,10 @@ export interface LabResultRecord {
   source: 'manual' | 'ocr_upload';
   ocrConfidence?: number; // 0 - 100%
   reviewedByPatient: boolean;
+  /** Optional metadata captured from an LLM/OCR extraction, when available. */
+  testDate?: string;
+  laboratory?: string;
+  patientName?: string;
 }
 
 export interface AuditTrailRecord {
@@ -116,8 +120,8 @@ export interface AuditTrailRecord {
   entityType: 'bodyMetrics' | 'lifestyle' | 'labResults' | 'profile' | 'medication';
   recordId: string;
   summary: string;
-  previousValue?: any;
-  newValue?: any;
+  previousValue?: unknown;
+  newValue?: unknown;
   reason?: string;
 }
 
@@ -201,4 +205,60 @@ export interface ExtractedOcrField {
   referenceMax: number;
   status: 'normal' | 'borderline' | 'critical';
   verified: boolean;
+  /** The exact text the model read for the value, for review. */
+  rawValue?: string;
+  /** The model's plain-language reason for this read, for review/audit. */
+  note?: string;
+}
+
+export interface LabReportPatientInfo {
+  patientName?: string;
+  patientId?: string;
+  dateOfBirth?: string;
+  /** Confidence for the patient block, if known (0-100). */
+  confidence?: number;
+}
+
+/**
+ * A single structured document produced by an OCR/LLM provider, before
+ * schema validation and confidence evaluation. Raw, un-trusted output.
+ */
+export interface RawLabReportExtraction {
+  patient?: LabReportPatientInfo;
+  testDate?: string;
+  laboratory?: string;
+  fields: Array<{
+    testName?: string;
+    value?: number | string;
+    unit?: string;
+    referenceMin?: number | string;
+    referenceMax?: number | string;
+    confidence?: number;
+    rawValue?: string;
+    note?: string;
+  }>;
+}
+
+/**
+ * The validated, confidence-scored extraction that is safe to present to the
+ * user for review. Still a candidate until the user confirms.
+ */
+export interface LabReportExtraction {
+  patient?: LabReportPatientInfo;
+  testDate?: string;
+  laboratory?: string;
+  fields: ExtractedOcrField[];
+  /** Field-level issues found during validation (missing/invalid values). */
+  warnings: string[];
+}
+
+export interface OcrScanResult {
+  success: boolean;
+  filename: string;
+  extractedCount: number;
+  lowConfidenceCount: number;
+  document: LabReportExtraction;
+  processedAt: string;
+  /** True when no provider is configured and a deterministic fallback ran. */
+  fallback?: boolean;
 }
