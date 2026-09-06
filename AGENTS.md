@@ -18,12 +18,17 @@ Before making changes:
 
 After making changes:
 
-1. Run the relevant tests and checks.
+1. Run the relevant tests and checks (gate: `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`).
 2. Update `docs/TASKS.md`.
 3. Update `docs/CURRENT.md`.
 4. Record important architectural/technical decisions in `docs/DECISIONS.md`.
 5. Record reusable fixes in `docs/FIXES.md`.
 6. Record unresolved problems in `docs/KNOWN_ISSUES.md`.
+
+> Test environment: `vitest.setup.ts` loads `.env.local` for `DATABASE_URL` and
+> then unsets `LLM_PROVIDER_*` / `SESSION_SECRET`, so unit tests run against the
+> Docker DB but stay keyless/deterministic (ADR-017). Set provider/session vars
+> explicitly inside a test that needs them.
 
 ## Product Boundaries
 
@@ -33,6 +38,7 @@ After making changes:
 - Manual data entry is required.
 - OCR upload/review is required for lab reports (server-side LLM extraction behind `lib/ocr`, with a review/confirm step).
 - Health insights are decision-support content, not medical diagnosis.
+- Health Score, reference-range status, trends, and rule-based findings are always computed by the deterministic engine (`lib/healthScoreCalculator.ts`, `lib/referenceRanges.ts`, `lib/riskPredictionEngine.ts`, `lib/insights/deterministicEngine.ts`). The LLM (`lib/insights/`) only explains that evidence and never computes numbers, ranges, trends, or diagnoses.
 - Never state or imply that HealthSpan can diagnose a disease.
 - Doctor-consult callouts must be used for clinically concerning or critical findings.
 
@@ -79,6 +85,7 @@ After making changes:
 - Clearly distinguish general lifestyle guidance from medical advice.
 - Do not invent missing measurements.
 - Do not calculate a trend from an insufficient number of observations without marking it as insufficient data.
+- LLM-assisted insight output must pass `lib/insights/validation.ts` and be labelled with its source (`LLM-Explained` vs `Deterministic Fallback`); when the LLM is unconfigured, unavailable, or its output fails validation, fall back to deterministic content with `fallback: true` rather than surfacing un-trusted text.
 
 ## Definition of Done
 

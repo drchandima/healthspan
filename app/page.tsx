@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HealthSpanStore, HealthScoreBreakdown, ClinicalInsight, BodyMetricRecord } from '@/lib/types';
+import { EnrichedInsight } from '@/lib/insights/types';
 import { SEED_DEMO_STORE } from '@/lib/seedData';
 import { loadStoreFromServer, persistStore, addBodyMetric } from '@/lib/storage';
 import { calculateHealthScore } from '@/lib/healthScoreCalculator';
@@ -27,6 +28,42 @@ export default function HealthSpanApp() {
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  // LLM-assisted insight enrichment state (deterministic score/insights stay local & synchronous).
+  const [enrichedInsights, setEnrichedInsights] = useState<EnrichedInsight[]>([]);
+  const [enrichedState, setEnrichedState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const [enrichedFallback, setEnrichedFallback] = useState(true);
+
+  // Fetch LLM-assisted explanations for the deterministic insights.
+  const loadInsights = useCallback(async () => {
+    setEnrichedState('loading');
+    try {
+      const res = await fetch('/api/insights', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.status === 401) {
+        // Not authenticated — keep the deterministic insights only.
+        setEnrichedState('idle');
+        return;
+      }
+      if (!res.ok) {
+        setEnrichedState('error');
+        return;
+      }
+      const data = await res.json();
+      if (data?.success) {
+        setEnrichedInsights(data.enriched ?? []);
+        setEnrichedFallback(Boolean(data.fallback));
+        setEnrichedState('loaded');
+      } else {
+        setEnrichedState('error');
+      }
+    } catch (err) {
+      console.error('Error loading AI insights:', err);
+      setEnrichedState('error');
+    }
+  }, []);
+
   // Load from the authenticated server store on mount.
   useEffect(() => {
     let mounted = true;
@@ -34,7 +71,9 @@ export default function HealthSpanApp() {
       if (!mounted) return;
       setStore(loaded || SEED_DEMO_STORE);
       setIsMounted(true);
-      if (!loaded) {
+      if (loaded) {
+        void loadInsights();
+      } else {
         // Not logged in yet — prompt for authentication.
         setIsAuthOpen(true);
       }
@@ -42,7 +81,7 @@ export default function HealthSpanApp() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadInsights]);
 
   // Recalculate Health Score & Predictive Clinical Insights (only when store is loaded)
   const scoreData: HealthScoreBreakdown | null = store ? calculateHealthScore(store) : null;
@@ -81,6 +120,8 @@ export default function HealthSpanApp() {
       console.error('Logout error:', err);
     }
     setStore(SEED_DEMO_STORE);
+    setEnrichedInsights([]);
+    setEnrichedState('idle');
     setIsAuthOpen(true);
   };
 
@@ -88,6 +129,7 @@ export default function HealthSpanApp() {
     const loaded = await loadStoreFromServer();
     setStore(loaded || SEED_DEMO_STORE);
     setActiveTab('dashboard');
+    if (loaded) void loadInsights();
   };
 
   if (!isMounted || !store) {
@@ -174,6 +216,9 @@ export default function HealthSpanApp() {
             store={store}
             scoreData={scoreData}
             insights={insights}
+            enriched={enrichedInsights}
+            enrichedState={enrichedState}
+            enrichedFallback={enrichedFallback}
           />
         )}
 

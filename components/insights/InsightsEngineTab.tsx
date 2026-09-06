@@ -2,16 +2,21 @@
 
 import React from 'react';
 import { HealthSpanStore, HealthScoreBreakdown, ClinicalInsight } from '@/lib/types';
+import { EnrichedInsight } from '@/lib/insights/types';
 import InsightCard from './InsightCard';
-import { Sparkles, Brain, ShieldAlert, Activity, TrendingUp, AlertTriangle } from 'lucide-react';
+import EnrichedInsightCard from './EnrichedInsightCard';
+import { Sparkles, Brain, ShieldAlert, Activity, TrendingUp, AlertTriangle, Loader } from 'lucide-react';
 
 interface InsightsEngineTabProps {
   store: HealthSpanStore;
   scoreData: HealthScoreBreakdown;
   insights: ClinicalInsight[];
+  enriched?: EnrichedInsight[];
+  enrichedState?: 'idle' | 'loading' | 'loaded' | 'error';
+  enrichedFallback?: boolean;
 }
 
-export default function InsightsEngineTab({ store, scoreData, insights }: InsightsEngineTabProps) {
+export default function InsightsEngineTab({ store, scoreData, insights, enriched = [], enrichedState = 'idle', enrichedFallback = true }: InsightsEngineTabProps) {
   const criticalInsights = insights.filter(i => i.severity === 'critical');
   const warningInsights = insights.filter(i => i.severity === 'warning');
   const infoInsights = insights.filter(i => i.severity === 'info');
@@ -154,6 +159,63 @@ export default function InsightsEngineTab({ store, scoreData, insights }: Insigh
         {insights.map(insight => (
           <InsightCard key={insight.id} insight={insight} />
         ))}
+      </div>
+
+      {/* AI-Assisted Explanations (validated, decision-support only) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>AI-Assisted Explanations</h3>
+          {enrichedState === 'loaded' && (
+            <span className="badge badge-normal" style={{ fontSize: '0.7rem', padding: '4px 10px' }}>
+              {enrichedFallback ? <ShieldAlert size={11} /> : <Sparkles size={11} />}
+              {enrichedFallback ? 'Deterministic fallback (no LLM)' : 'LLM-validated explanations'}
+            </span>
+          )}
+        </div>
+
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '-8px' }}>
+          Plain-language explanations generated from the deterministic findings above. These are
+          decision-support summaries — they never compute scores, ranges, or trends, and are not a
+          medical diagnosis.
+        </p>
+
+        {enrichedState === 'loading' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            <Loader size={15} className="spin" />
+            Generating plain-language explanations from the deterministic evidence...
+          </div>
+        )}
+
+        {enrichedState === 'error' && (
+          <div style={{
+            padding: '14px 16px',
+            borderRadius: 'var(--radius-md)',
+            background: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid var(--warning-border)',
+            fontSize: '0.82rem',
+            color: 'var(--text-muted)'
+          }}>
+            <strong>AI explanations are temporarily unavailable.</strong> The deterministic insights
+            above remain available and are always shown.
+          </div>
+        )}
+
+        {enrichedState === 'loaded' && enriched.length > 0 && enriched.map((e, i) => (
+          <EnrichedInsightCard key={e.id} enriched={e} index={i} isFallback={enrichedFallback} />
+        ))}
+
+        {enrichedState === 'loaded' && enriched.length === 0 && (
+          <div style={{
+            padding: '14px 16px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-surface-elevated)',
+            border: '1px solid var(--border-subtle)',
+            fontSize: '0.82rem',
+            color: 'var(--text-muted)'
+          }}>
+            No additional plain-language explanations were generated for this dataset.
+          </div>
+        )}
       </div>
     </div>
   );
