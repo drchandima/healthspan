@@ -69,6 +69,58 @@ yields a string and is the robust choice.
 
 KI-002
 
+## FIX-003 — Vitest cannot reach Docker DB and leaks the LLM key from `.env.local`
+
+### Symptom
+
+After the DB moved to Docker, `npm test` failed the PostgreSQL round-trip suite
+(`lib/repositories/healthStoreRepository.test.ts`) with:
+
+```
+error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
+```
+
+and, after `DATABASE_URL` was provided, other tests began hitting the real LLM
+provider (e.g. OCR fallback tests that assume a keyless env).
+
+### Cause
+
+Vitest does not load `.env.local`. `lib/db.ts` fell back to a passwordless
+connection URL (`postgresql://healthspan@127.0.0.1:5433/healthspan`) which the
+Docker DB (which requires SCRAM auth) rejected. Loading the whole `.env.local`
+fixed the DB connection but leaked a developer's real `LLM_PROVIDER_API_KEY`
+into the unit-test environment, silently flipping tests onto the real provider
+path (and making the suite network-dependent).
+
+### Solution
+
+`vitest.setup.ts` loads `.env.local` for `DATABASE_URL`, then explicitly unsets
+`LLM_PROVIDER_API_KEY`, `LLM_PROVIDER_BASE_URL`, `LLM_MODEL`, and `SESSION_SECRET`
+so the unit-test environment stays deterministic and keyless. Tests that need a
+key set it locally (see ADR-017).
+
+```ts
+import dotenv from 'dotenv';
+import path from 'node:path';
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+delete process.env.LLM_PROVIDER_API_KEY;
+delete process.env.LLM_PROVIDER_BASE_URL;
+delete process.env.LLM_MODEL;
+delete process.env.SESSION_SECRET;
+```
+
+### Prevention
+
+- Wire `vitest.setup.ts` (registered via `setupFiles` in `vitest.config.ts`) any
+  time tests need app env vars.
+- Keep the unit suite keyless by default and set provider/session env explicitly
+  inside tests that need it.
+- Document the scheme in ADR-017 and `docs/DEVELOPMENT.md`.
+
+### Related Task
+
+TASK-003 (LLM-Powered Health Insights).
+
 ## FIX Template
 
 ```markdown

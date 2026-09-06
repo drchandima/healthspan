@@ -54,17 +54,35 @@ If a different test command is selected, document it in the repository package s
 
 ## Database
 
-Persistence is PostgreSQL (project-local cluster in a gitignored `.pgdata/`, port 5433).
-Initialize and seed via:
+Persistence is PostgreSQL running in Docker (`docker-compose.yml`, container
+`healthspan-db`, host port **5433** → container 5432). The container uses
+`restart: always`, so it auto-starts with the Docker daemon (no manual start, no
+`ECONNREFUSED` after reboots).
 
 ```bash
-npm run db:init      # apply db/schema.sql idempotently + seed tenant/admin
-npm run db:migrate   # import legacy JSON user files (if any)
-npm run db:seed      # seed demo@healthspan.com / demo123 + sample data
+npm run db:start   # docker compose up -d   (start the DB container)
+npm run db:stop    # docker compose down    (stop it)
+npm run db:init    # apply db/schema.sql idempotently + seed tenant/admin
+npm run db:migrate # import legacy JSON user files (if any)
+npm run db:seed    # seed demo@healthspan.com / demo123 + sample data
+```
+
+Connection (in `.env.local`):
+
+```text
+DATABASE_URL=postgresql://myuser:mypassword@127.0.0.1:5433/myapp
 ```
 
 `db/schema.sql` is the schema source of truth and includes idempotent
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` upgrades, so re-running `db:init` is safe.
+
+> Historical note: an earlier project-local cluster in a gitignored `.pgdata/`
+> directory (also port 5433) was retired. Do not start it — it conflicts with the
+> Docker container on port 5433. HealthSpan data now lives in the named Docker
+> volume `healthspan-pgdata`.
+>
+> If the Docker DB is freshly recreated (empty), re-run `npm run db:init` and
+> `npm run db:seed` to restore schema and seed data.
 
 Do not expose any data directory through the Next.js public/static asset path.
 
@@ -80,6 +98,24 @@ LLM_MODEL=gpt-4o-mini
 
 When `LLM_PROVIDER_API_KEY` is empty, `/api/ocr-scan` returns a deterministic fallback
 (labelled `fallback: true`) for development/demo — it is not genuine OCR.
+
+## Health Insights / LLM Enrichment
+
+`GET /api/insights` computes the deterministic Health Score and rule-based findings
+server-side, then (when configured) asks the same OpenAI-compatible provider to write
+plain-language explanations of those findings. The same env vars are reused:
+
+```text
+LLM_PROVIDER_BASE_URL=https://api.openai.com/v1
+LLM_PROVIDER_API_KEY=
+LLM_MODEL=gpt-4o-mini
+```
+
+The LLM only ever receives compact, validated evidence and is instructed not to add
+numbers, ranges, trends, or diagnoses. Output is validated (`lib/insights/validation.ts`);
+invalid fields are dropped and, if nothing survives (or no key is set), a deterministic
+fallback labelled `fallback: true` is returned. The deterministic score/findings always
+render in the UI regardless of LLM availability.
 
 ## Environment Variables
 
@@ -179,6 +215,12 @@ Cover:
 - OCR validation (`lib/ocr/validation.ts`)
 - OCR confidence (`lib/ocr/confidence.ts`)
 - OCR provider fallback path (`lib/ocr/provider.ts`)
+- insights: deterministic engine, evidence snapshot, LLM-output validation, deterministic fallback (`lib/__tests__/insights.test.ts`)
+
+> Test-environment note: `vitest.setup.ts` loads `.env.local` so the PostgreSQL
+> round-trip test reaches Docker DB, then unsets `LLM_PROVIDER_*`/`SESSION_SECRET`
+> so the unit suite stays keyless and deterministic (ADR-017). Provider/session
+> config needed inside a test must be set explicitly in that test.
 
 ### Integration Tests
 

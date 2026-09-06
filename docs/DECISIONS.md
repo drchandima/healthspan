@@ -305,3 +305,48 @@ Retaining the source context (which lab, which test date, which patient) support
 ### Consequence
 
 `lab_results` gained `test_date`/`laboratory`/`patient_name` columns; the persisted timestamp remains the explicit measurement time (see ADR-004) and is never overwritten by the report's test date.
+
+---
+
+## ADR-016 — LLM Assists Health Insights But Never Owns the Numbers
+
+### Status
+
+Accepted (TASK-003)
+
+### Decision
+
+Health insights are produced by a two-stage pipeline:
+
+1. **Deterministic engine** (`lib/insights/deterministicEngine.ts`) — the sole authority for the Health Score, score components, reference-range status, abnormality detection, percentage changes, trend detection, and rule-based findings. It reuses `lib/healthScoreCalculator.ts`, `lib/riskPredictionEngine.ts`, and `lib/referenceRanges.ts`, and emits a compact `StructuredEvidence` bundle.
+2. **LLM explanation** (`lib/insights/llmProvider.ts`) — receives ONLY the validated evidence bundle and is prompted to paraphrase/summarise it and offer general lifestyle guidance. It never computes values, ranges, percentages, trends, or diagnoses.
+
+The LLM's raw output passes `lib/insights/validation.ts`, which drops malformed fields, diagnostic claims ("you will develop…", "diagnosis", "cure", "guaranteed"), and invented source references. If no field survives — or no provider is configured/available — a deterministic fallback labelled `fallback: true` is used (`lib/insights/mockProvider.ts`).
+
+### Reason
+
+The product requires a score and findings the user can trust, explain, and audit (ADR-006). An LLM is valuable for plain-language framing but unreliable for arithmetic and medical claims (ADR-009).
+
+### Consequence
+
+`GET /api/insights` (authenticated) returns `{ deterministic, enriched?, fallback }`. Insights are computed on demand and never persisted; the deterministic surface (dashboard, notifications, score) is unchanged and always rendered, even when the LLM path fails.
+
+---
+
+## ADR-017 — Unit Tests Load `.env.local` But Stay Keyless
+
+### Status
+
+Accepted (TASK-003, FIX-003)
+
+### Decision
+
+`vitest.setup.ts` loads `.env.local` (so repository round-trip tests reach the same Docker PostgreSQL as the app) and then unsets `LLM_PROVIDER_*` and `SESSION_SECRET`. Tests that need a provider key or a session secret set them explicitly.
+
+### Reason
+
+Before this, `npm test` failed the PostgreSQL round-trip test because `lib/db.ts`'s passwordless fallback URL could not SCRAM-authenticate against the Docker DB. Loading `.env.local` fixes that; but leaking a developer's real LLM key (or session secret) into the unit-test environment silently changes test behavior (e.g. the OCR tests assumed a keyless env).
+
+### Consequence
+
+The unit-test environment is deterministic and keyless by default. Treat `vitest.setup.ts` as the place to centralise test-environment config.

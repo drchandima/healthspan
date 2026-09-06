@@ -28,6 +28,7 @@ Next.js App Router
   |
   +-- Adapters / Modules
        +-- OCR (lib/ocr: textExtractor + llmProvider + validation + confidence)
+       +-- Insights LLM enrichment (lib/insights: deterministicEngine + llmProvider + validation + mockProvider)
        +-- Email
        +-- Push notifications
 ```
@@ -97,7 +98,7 @@ Responsible only for calculating the score and its component breakdown. It must 
 
 ### Insights
 
-Responsible for evaluating deterministic rules against time-series data and producing structured insight objects.
+Responsible for evaluating deterministic rules against time-series data and producing structured insight objects. Optional LLM-assisted, plain-language explanations are generated from a validated evidence bundle and are clearly labelled as enrichment, never as computation (see ADR-016).
 
 ### Notifications
 
@@ -253,10 +254,29 @@ Health records
     +--> cross-metric rules
     |
     v
-Insight engine
+Insight engine (deterministic, authoritative)
+    |
+    +--> Health Score + components         (lib/healthScoreCalculator)
+    +--> status / abnormality / % change   (lib/referenceRanges)
+    +--> rule-based findings               (lib/riskPredictionEngine)
     |
     v
-Structured insight
+Structured evidence bundle (lib/insights/deterministicEngine.ts)
+    |
+    +--> (optional) LLM explanation       (lib/insights/llmProvider.ts)
+    |         |
+    |         v
+    |     Validation (lib/insights/validation.ts) -> per-field drop
+    |         |
+    |         v
+    |     Validated plain-language enrichment (never re-computes numbers)
+    |
+    +--> (no LLM / failure / nothing validated)
+    |         v
+    |     Deterministic fallback, labelled `fallback: true`
+    |
+    v
+InsightsResult { deterministic, enriched?, fallback }
     |
     +--> severity
     +--> title
@@ -265,6 +285,8 @@ Structured insight
     +--> recommendation
     +--> doctorConsultCallout
 ```
+
+The deterministic score, statuses, and findings are always present and never influenced by the LLM. The LLM explains only the evidence it is handed (`/api/insights`, authenticated, computed on demand, never persisted).
 
 ## Example Cross-Metric Rule
 
@@ -333,6 +355,43 @@ Without `LLM_PROVIDER_API_KEY` the route returns a deterministic fallback labell
 
 No OCR result should become trusted health data merely because extraction produced it;
 results are candidates until the user confirms.
+
+## LLM-Assisted Health Insights
+
+`GET /api/insights` (guarded by `requireSession()`) computes the deterministic
+Health Score / findings and optionally adds validated plain-language explanations:
+
+```text
+Authenticated request
+    |
+    v
+/load authenticated store (healthStoreRepository)
+    |
+    v
+Deterministic engine -> score + rule findings   (authoritative, LLM-independent)
+    |
+    v
+StructuredEvidence bundle
+    |
+    +--> LLM configured --> /chat/completions --> validation -> enriched[]
+    +--> else / failure  --> deterministic fallback (labelled `fallback: true`)
+    |
+    v
+{ deterministic, enriched?, fallback }
+```
+
+Rules:
+
+- The LLM input is a compact, machine-readable evidence bundle; it never sees the
+  raw full store and is instructed never to add numbers, ranges, or diagnoses.
+- `lib/insights/validation.ts` drops any field with a diagnostic claim or an
+  unknown source reference and caps lifestyle suggestions; if nothing survives,
+  the deterministic fallback is used.
+- Score/status/trends are computed client-agnostically and identically server-side;
+  the UI also keeps its synchronous deterministic calculation so the dashboard
+  always renders regardless of LLM availability.
+- Enriched content is rendered with an explicit "LLM-Explained" or "Deterministic
+  Fallback" badge and is never presented as a diagnosis.
 
 ## Notifications
 

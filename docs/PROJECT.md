@@ -14,7 +14,7 @@ Deliver a usable single-account application that can:
 - Detect abnormal values using configured reference ranges.
 - Analyze simple trends and percentage changes.
 - Calculate an explainable overall Health Score.
-- Generate plain-language, non-diagnostic health insights.
+- Generate plain-language, non-diagnostic health insights (deterministic rules + optional LLM-assisted plain-language explanations).
 - Upload laboratory reports for OCR extraction and human review.
 - Send configurable weekly/monthly email digests.
 - Export or permanently delete the account and its data.
@@ -40,6 +40,7 @@ These credentials are development/test fixtures only and must not be treated as 
 - PostgreSQL persistence (tenant-ready via `tenantId`/`userId`)
 - iron-session + bcryptjs authentication
 - LLM-powered OCR adapter for laboratory report extraction (OpenAI-compatible, server-side)
+- LLM-assisted health insight explanations (OpenAI-compatible, server-side, enrichment-only)
 - Repository/service abstraction
 - Responsive web UI
 - Time-series charts
@@ -123,6 +124,7 @@ Every measurement is a time-series event with:
 - No clinical decision-making beyond explainable threshold/trend rules.
 - OCR extraction must have a review/confirmation step when confidence is low.
 - OCR extraction is a candidate until the user confirms it; extraction is validated and confidence-scored server-side.
+- Health insights: the Health Score, reference-range status, trends, and rule-based findings are always computed by the deterministic engine. The LLM only produces plain-language explanations from that evidence; it never computes numbers, ranges, trends, or diagnoses, and unsafe/invalid explanations are dropped (see ADR-016).
 
 ## Success Criteria
 

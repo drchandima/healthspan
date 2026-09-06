@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:18
+    container_name: healthspan-db
+    restart: always
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: myapp
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - healthspan-pgdata:/var/lib/postgresql/18/docker
+
+volumes:
+  healthspan-pgdata:

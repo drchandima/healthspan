@@ -1,5 +1,39 @@
 # HealthSpan Known Issues
 
+## KI-008 — AI Insight Explanations Are On-Demand, Unpersisted
+
+### Status
+
+Open (by design for the MVP — see ADR-016)
+
+### Impact
+
+Medium
+
+### Description
+
+`GET /api/insights` recomputes the deterministic score/findings and (when the LLM
+provider is configured) generates plain-language explanations on every request.
+Explanations are not persisted, so:
+
+- each dashboard visit re-invokes the provider (latency/cost), and
+- insight text varies with provider availability at request time (a provider
+  outage degrades the "AI-Assisted Explanations" section only — the
+  deterministic score/insights always render).
+
+### Workaround
+
+The deterministic fallback (`fallback: true`) keeps the feature usable with no
+key or during an outage; the UI shows an explicit badge either way.
+
+### Planned Resolution
+
+If the product needs stable, reusable explanations, persist validated enriched
+insights (a `insights` table keyed by user + regenerated when the deterministic
+evidence changes), or cache them per evidence-hash with a TTL.
+
+---
+
 ## KI-001 — JSON Persistence Is Not Production-Scale
 
 ### Status

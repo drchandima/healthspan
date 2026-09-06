@@ -3,6 +3,7 @@
 > This file is the high-level index. Detailed plans live in `plans/TASK-*.md`.
 > - TASK-001 — Authentication + PostgreSQL: COMPLETE
 > - TASK-002 — LLM OCR for Lab Reports: COMPLETE (see `plans/TASK-002-llm-ocr.md`)
+> - TASK-003 — LLM-Powered Health Insights: COMPLETE (deterministic engine → LLM explanation → validation → fallback)
 
 ## Phase 0 — Project Foundation
 
@@ -168,17 +169,32 @@
 
 ## Phase 9 — Health Insights Engine
 
-- [ ] Define structured insight model.
-- [ ] Implement abnormal-value insight rules.
-- [ ] Implement trend insight rules.
-- [ ] Implement cross-metric pattern rules.
-- [ ] Implement severity levels: info/warning/critical.
-- [ ] Add plain-language findings.
-- [ ] Add lifestyle suggestions.
-- [ ] Add doctor-consult callouts.
-- [ ] Implement insufficient-data handling.
-- [ ] Add persistent medical disclaimer.
-- [ ] Test every rule with positive/negative/boundary cases.
+> Deterministic core: reference-range evaluator (`lib/referenceRanges.ts`),
+> severity classification, percentage-change, and the rule-based predictive
+> engine (`lib/riskPredictionEngine.ts`) plus the deterministic Health Score
+> (`lib/healthScoreCalculator.ts`). LLM-assisted explanations (TASK-003) live in
+> `lib/insights/` and are enrichment-only — the LLM never computes score,
+> ranges, trends, or diagnoses.
+
+- [x] Define structured insight model.
+- [x] Implement abnormal-value insight rules (reference-range evaluator).
+- [x] Implement trend insight rules.
+- [x] Implement cross-metric pattern rules (`riskPredictionEngine`).
+- [x] Implement severity levels: info/warning/critical.
+- [x] Add plain-language findings.
+- [x] Add lifestyle suggestions.
+- [x] Add doctor-consult callouts.
+- [x] Implement insufficient-data handling.
+- [x] Add persistent medical disclaimer.
+- [x] Test every rule with positive/negative/boundary cases.
+- [x] **LLM-assisted explanations (TASK-003):**
+  - [x] `lib/insights/deterministicEngine.ts` — compact, authoritative evidence snapshot (score, components, metrics w/ status + pct change, deterministic findings).
+  - [x] `lib/insights/llmProvider.ts` — OpenAI-compatible `/chat/completions` client (reuses OCR env vars).
+  - [x] `lib/insights/validation.ts` — drops malformed/unsafe LLM fields (no diagnostic claims, no invented source ids).
+  - [x] `lib/insights/mockProvider.ts` — deterministic labelled fallback when the LLM is unconfigured/unavailable.
+  - [x] `app/api/insights` (authenticated, server-side) returns `{ deterministic, enriched?, fallback }`.
+  - [x] UI: "AI-Assisted Explanations" section with LLM/fallback source badges (`InsightsEngineTab`, `EnrichedInsightCard`).
+  - [x] Insight tests (deterministic, validation, fallback).
 
 ## Phase 10 — Notifications
 
